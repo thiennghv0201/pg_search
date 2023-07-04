@@ -79,14 +79,19 @@ module PgSearch
     delegate :connection, :quoted_table_name, to: :model
 
     def subquery
-      model
+      subquery_str =
+        model
         .unscoped
         .select("#{primary_key} AS pg_search_id")
         .select("#{rank} AS rank")
         .joins(subquery_join)
         .where(conditions)
-        .limit(nil)
-        .offset(nil)
+
+      if with_tenant?
+        subquery_str = subquery_str.where("#{quoted_table_name}.\"tenant_id\" = #{config.with_tenant_id}")
+      end
+
+      subquery_str.limit(nil).offset(nil)
     end
 
     def conditions
@@ -94,6 +99,10 @@ module PgSearch
         .reject { |_feature_name, feature_options| feature_options && feature_options[:sort_only] }
         .map { |feature_name, _feature_options| feature_for(feature_name).conditions }
         .inject { |accumulator, expression| Arel::Nodes::Or.new(accumulator, expression) }
+    end
+
+    def with_tenant?
+      config.with_tenant_id.to_i.positive?
     end
 
     def order_within_rank
